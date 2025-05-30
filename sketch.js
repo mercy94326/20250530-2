@@ -16,8 +16,6 @@ let fruitImages = {};
 let slicedFruits = [];
 let bombs = [];
 let bombImg;
-let drawPaths = [];
-let currentPath = [];
 
 let questionSet = [
   { text: "教育科技強調科技與學習的整合", correct: true },
@@ -76,8 +74,6 @@ function resetGame() {
     blocks = [];
     holdingBlock = null;
     blockCooldown = 0;
-    drawPaths = [];
-    currentPath = [];
     loop();
   } else if (currentGame === "fruit") {
     fruits = [];
@@ -129,25 +125,7 @@ function drawHandLandmarks() {
       }
     }
 
-    if (currentGame === "blocks") {
-      currentPath.push({ x: ix, y: iy });
-    }
-
     if (blockCooldown > 0) blockCooldown--;
-  }
-
-  if (currentGame === "blocks") {
-    noFill();
-    stroke(0);
-    strokeWeight(2);
-    for (let path of drawPaths) {
-      beginShape();
-      for (let pt of path) vertex(pt.x, pt.y);
-      endShape();
-    }
-    beginShape();
-    for (let pt of currentPath) vertex(pt.x, pt.y);
-    endShape();
   }
 }
 
@@ -159,7 +137,7 @@ function drawBlocks() {
 
   fill(0);
   textSize(16);
-  text("點指手勢放置積木，拖曳畫畫！", width / 2, height - 20);
+  text("食指與拇指靠近放置積木", width / 2, height - 20);
 }
 
 function drawFruit() {
@@ -184,7 +162,7 @@ function drawFruit() {
     if (isBomb) {
       bombs.push({ x: random(width), y: height, vy: random(8, 12) });
     } else {
-      fruits.push({ x: random(width), y: height, vy: random(10, 15), sliced: false });
+      fruits.push({ x: random(width), y: height, vy: random(14, 18), sliced: false });
     }
   }
 
