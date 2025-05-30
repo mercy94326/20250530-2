@@ -1,10 +1,10 @@
-// EdTech 手勢互動遊戲完整版 + 堆積木 + 切西瓜特效
+// EdTech 手勢互動遊戲完整版 + 堆積木與切西瓜小遊戲
 let video;
 let handpose;
 let predictions = [];
 let bubbles = [];
 let fruits = [];
-let slicedFruits = [];
+let explosions = [];
 let score = 0;
 let timer = 60;
 let gameStarted = false;
@@ -13,7 +13,7 @@ let lastFruitTime = 0;
 let currentGame = "quiz";
 let blocks = [];
 let holdingBlock = null;
-let stackHeight = 0;
+let blockHeight = 0;
 
 let questionSet = [
   { text: "教育科技強調科技與學習的整合", correct: true },
@@ -42,9 +42,7 @@ function setup() {
   let switchBtn = createButton("切換遊戲模式");
   switchBtn.position(10, 10);
   switchBtn.mousePressed(() => {
-    if (currentGame === "quiz") currentGame = "blocks";
-    else if (currentGame === "blocks") currentGame = "fruit";
-    else currentGame = "quiz";
+    currentGame = currentGame === "quiz" ? "blocks" : currentGame === "blocks" ? "fruit" : "quiz";
     resetGame();
   });
 }
@@ -59,11 +57,11 @@ function resetGame() {
   } else if (currentGame === "blocks") {
     blocks = [];
     holdingBlock = null;
-    stackHeight = 0;
+    blockHeight = 0;
     loop();
   } else if (currentGame === "fruit") {
     fruits = [];
-    slicedFruits = [];
+    explosions = [];
     score = 0;
     loop();
   }
@@ -80,7 +78,13 @@ function draw() {
   textSize(20);
   stroke(0);
   strokeWeight(3);
-  text(currentGame === "quiz" ? `分數：${score}  時間：${timer}` : currentGame === "blocks" ? `堆積木模式 高度：${stackHeight}` : `切水果模式 分數：${score}`, width / 2, 20);
+  if (currentGame === "quiz") {
+    text(`分數：${score}  時間：${timer}`, width / 2, 20);
+  } else if (currentGame === "blocks") {
+    text(`堆積木模式｜目前高度：${blockHeight}`, width / 2, 20);
+  } else {
+    text(`切西瓜模式｜得分：${score}`, width / 2, 20);
+  }
   noStroke();
 
   if (currentGame === "quiz") {
@@ -93,6 +97,7 @@ function draw() {
       noStroke();
       return;
     }
+
     if (timer <= 0) {
       textSize(32);
       fill(255);
@@ -103,11 +108,13 @@ function draw() {
       noLoop();
       return;
     }
+
     if (millis() - lastBubbleTime > 2000) {
       let q = random(questionSet);
       bubbles.push(new Bubble(q.text, q.correct));
       lastBubbleTime = millis();
     }
+
     for (let i = bubbles.length - 1; i >= 0; i--) {
       bubbles[i].update();
       bubbles[i].display();
@@ -117,9 +124,8 @@ function draw() {
     for (let block of blocks) block.display();
     if (holdingBlock) holdingBlock.display();
   } else if (currentGame === "fruit") {
-    if (millis() - lastFruitTime > 1500) {
-      let isBomb = random() < 0.2;
-      fruits.push(new Fruit(isBomb));
+    if (millis() - lastFruitTime > 1000) {
+      fruits.push(new Fruit());
       lastFruitTime = millis();
     }
     for (let i = fruits.length - 1; i >= 0; i--) {
@@ -127,11 +133,7 @@ function draw() {
       fruits[i].display();
       if (fruits[i].offScreen()) fruits.splice(i, 1);
     }
-    for (let i = slicedFruits.length - 1; i >= 0; i--) {
-      slicedFruits[i].update();
-      slicedFruits[i].display();
-      if (slicedFruits[i].offScreen()) slicedFruits.splice(i, 1);
-    }
+    for (let e of explosions) e.display();
   }
 
   drawHandAndDetect();
@@ -178,30 +180,29 @@ function drawHandAndDetect() {
     } else if (currentGame === "blocks") {
       let handX = width - indexTip[0];
       let handY = indexTip[1];
+
       if (!holdingBlock) {
         holdingBlock = new Block(handX, handY);
       } else {
         holdingBlock.x = handX;
         holdingBlock.y = handY;
-        if (dist(indexTip[0], thumbTip[0]) < 30 && dist(indexTip[1], thumbTip[1]) < 30) {
-          holdingBlock.snapTo(stackHeight);
+
+        if (dist(thumbTip[0], thumbTip[1], indexTip[0], indexTip[1]) < 30) {
+          holdingBlock.y = height - 30 - blockHeight * 30;
           blocks.push(holdingBlock);
-          stackHeight++;
           holdingBlock = null;
+          blockHeight++;
         }
       }
     } else if (currentGame === "fruit") {
-      let x = width - indexTip[0];
-      let y = indexTip[1];
+      let hx = width - indexTip[0];
+      let hy = indexTip[1];
+
       for (let i = fruits.length - 1; i >= 0; i--) {
-        let f = fruits[i];
-        if (dist(x, y, f.x, f.y) < f.r) {
-          if (f.isBomb) {
-            score = 0;
-          } else {
-            score++;
-            slicedFruits.push(new SlicedFruit(f.x, f.y, f.r));
-          }
+        if (fruits[i].checkCut(hx, hy)) {
+          explosions.push(new Explosion(fruits[i].x, fruits[i].y));
+          if (!fruits[i].isBomb) score++;
+          else score = max(score - 3, 0);
           fruits.splice(i, 1);
         }
       }
@@ -218,12 +219,15 @@ class Bubble {
     this.r = 60;
     this.speed = 2;
   }
+
   update() {
     this.y += this.speed;
   }
+
   offScreen() {
     return this.y > height + this.r;
   }
+
   display() {
     fill(this.correct ? 'lightblue' : 'lightpink');
     stroke(0);
@@ -244,10 +248,7 @@ class Block {
     this.w = 50;
     this.h = 30;
   }
-  snapTo(level) {
-    this.x = width / 2 + random(-20, 20);
-    this.y = height - 30 - level * 32;
-  }
+
   display() {
     fill("gold");
     stroke(0);
@@ -257,51 +258,56 @@ class Block {
 }
 
 class Fruit {
-  constructor(isBomb) {
+  constructor() {
     this.x = random(100, width - 100);
     this.y = height + 50;
-    this.r = 30;
-    this.isBomb = isBomb;
-    this.vx = random(-1, 1);
-    this.vy = random(-5, -8);
+    this.r = 40;
+    this.speedY = -8 - random(3);
+    this.gravity = 0.4;
+    this.isBomb = random(1) < 0.2;
+    this.cut = false;
   }
+
   update() {
-    this.x += this.vx;
-    this.y += this.vy;
-    this.vy += 0.2;
+    this.y += this.speedY;
+    this.speedY += this.gravity;
   }
+
   offScreen() {
-    return this.y > height + 50;
+    return this.y > height + this.r;
   }
+
+  checkCut(hx, hy) {
+    if (!this.cut && dist(this.x, this.y, hx, hy) < this.r) {
+      this.cut = true;
+      return true;
+    }
+    return false;
+  }
+
   display() {
-    fill(this.isBomb ? 'black' : 'green');
-    stroke(255);
-    ellipse(this.x, this.y, this.r * 2);
+    if (!this.cut) {
+      fill(this.isBomb ? 'black' : 'green');
+      ellipse(this.x, this.y, this.r * 2);
+    } else {
+      fill('red');
+      arc(this.x - 20, this.y, this.r, this.r, PI + QUARTER_PI, TWO_PI);
+      arc(this.x + 20, this.y, this.r, this.r, PI, PI + HALF_PI);
+    }
   }
 }
 
-class SlicedFruit {
-  constructor(x, y, r) {
-    this.pieces = [
-      { x: x - 10, y, vx: -2, vy: -3, r },
-      { x: x + 10, y, vx: 2, vy: -3, r }
-    ];
-  }
-  update() {
-    for (let p of this.pieces) {
-      p.x += p.vx;
-      p.y += p.vy;
-      p.vy += 0.2;
-    }
-  }
-  offScreen() {
-    return this.pieces.every(p => p.y > height + 50);
+class Explosion {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.life = 20;
   }
   display() {
-    fill('lightgreen');
-    stroke(0);
-    for (let p of this.pieces) {
-      ellipse(p.x, p.y, p.r, p.r);
+    if (this.life > 0) {
+      fill(255, 100, 100, this.life * 10);
+      ellipse(this.x, this.y, this.life * 2);
+      this.life--;
     }
   }
 }
