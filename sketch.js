@@ -12,8 +12,10 @@ let blocks = [];
 let holdingBlock = null;
 let blockCooldown = 0;
 let fruits = [];
+let fruitImages = {};
 let slicedFruits = [];
 let bombs = [];
+let bombImg;
 
 let questionSet = [
   { text: "教育科技強調科技與學習的整合", correct: true },
@@ -24,6 +26,12 @@ let questionSet = [
   { text: "教學設計不需要考慮學生學習歷程", correct: false },
   { text: "教育科技與課程設計可結合進行教學創新", correct: true }
 ];
+
+function preload() {
+  fruitImages['watermelon'] = loadImage('https://i.imgur.com/fO2fZ5W.png');
+  fruitImages['watermelon_half'] = loadImage('https://i.imgur.com/ovztbmz.png');
+  bombImg = loadImage('https://i.imgur.com/nUXK1sO.png');
+}
 
 function setup() {
   createCanvas(640, 480);
@@ -47,12 +55,6 @@ function setup() {
     else currentGame = "quiz";
     resetGame();
   });
-
-  let restartBtn = createButton("重新開始");
-  restartBtn.position(140, 10);
-  restartBtn.mousePressed(() => {
-    resetGame();
-  });
 }
 
 function resetGame() {
@@ -71,177 +73,287 @@ function resetGame() {
     fruits = [];
     slicedFruits = [];
     bombs = [];
-    score = 0;
     loop();
   }
 }
 
 function draw() {
-  background(255);
   push();
   translate(width, 0);
   scale(-1, 1);
   image(video, 0, 0, width, height);
   pop();
 
-  if (currentGame === "blocks") drawBlocks();
-  else if (currentGame === "fruit") drawFruit();
-  else drawQuiz();
+  fill(255);
+  textSize(20);
+  stroke(0);
+  strokeWeight(3);
+  text(currentGame === "quiz" ? `分數：${score}  時間：${timer}` : (currentGame === "blocks" ? `堆積木模式，高度：${blocks.length}` : `切西瓜遊戲 分數：${score}`), width / 2, 20);
+  noStroke();
 
-  drawHandLandmarks();
+  if (currentGame === "quiz") {
+    if (!gameStarted) {
+      textSize(28);
+      fill(255);
+      stroke(0);
+      strokeWeight(4);
+      text("按任意鍵開始遊戲", width / 2, height / 2);
+      noStroke();
+      return;
+    }
+    if (timer <= 0) {
+      textSize(32);
+      fill(255);
+      stroke(0);
+      strokeWeight(4);
+      text("遊戲結束！最終分數：" + score, width / 2, height / 2);
+      noStroke();
+      noLoop();
+      return;
+    }
+    if (millis() - lastBubbleTime > 2000) {
+      let q = random(questionSet);
+      bubbles.push(new Bubble(q.text, q.correct));
+      lastBubbleTime = millis();
+    }
+    for (let i = bubbles.length - 1; i >= 0; i--) {
+      bubbles[i].update();
+      bubbles[i].display();
+      if (bubbles[i].offScreen()) bubbles.splice(i, 1);
+    }
+  } else if (currentGame === "blocks") {
+    for (let block of blocks) block.display();
+    if (holdingBlock) holdingBlock.display();
+    if (blockCooldown > 0) blockCooldown--;
+  } else if (currentGame === "fruit") {
+    if (frameCount % 60 === 0) {
+      fruits.push(new Fruit());
+      if (random(1) < 0.2) bombs.push(new Bomb());
+    }
+    for (let i = fruits.length - 1; i >= 0; i--) {
+      fruits[i].update();
+      fruits[i].display();
+      if (fruits[i].offScreen()) fruits.splice(i, 1);
+    }
+    for (let i = slicedFruits.length - 1; i >= 0; i--) {
+      slicedFruits[i].update();
+      slicedFruits[i].display();
+      if (slicedFruits[i].offScreen()) slicedFruits.splice(i, 1);
+    }
+    for (let i = bombs.length - 1; i >= 0; i--) {
+      bombs[i].update();
+      bombs[i].display();
+      if (bombs[i].offScreen()) bombs.splice(i, 1);
+    }
+  }
+
+  drawHandAndDetect();
 }
 
-function drawHandLandmarks() {
-  if (
-    predictions.length > 0 &&
-    predictions[0].annotations &&
-    predictions[0].annotations.indexFinger &&
-    predictions[0].annotations.thumb
-  ) {
-    let hand = predictions[0];
-    let index = hand.annotations.indexFinger[3];
-    let thumb = hand.annotations.thumb[3];
+function keyPressed() {
+  if (!gameStarted && currentGame === "quiz") {
+    gameStarted = true;
+    timer = 60;
+    score = 0;
+    bubbles = [];
+    loop();
+  }
+}
 
-    let ix = width - index[0];
-    let iy = index[1];
-    let tx = width - thumb[0];
-    let ty = thumb[1];
+function drawHandAndDetect() {
+  if (predictions.length > 0) {
+    const hand = predictions[0].landmarks;
+    const thumbTip = hand[4];
+    const indexTip = hand[8];
+    const middleTip = hand[12];
+    const wrist = hand[0];
 
-    fill(0, 255, 0);
-    noStroke();
-    ellipse(ix, iy, 15);
+    noFill();
+    stroke(0, 255, 0);
+    strokeWeight(2);
+    for (let pt of hand) ellipse(width - pt[0], pt[1], 8, 8);
 
-    let distance = dist(ix, iy, tx, ty);
+    let handX = width - indexTip[0];
+    let handY = indexTip[1];
 
-    if (currentGame === "blocks") {
-      if (distance < 30 && blockCooldown <= 0) {
-        let newBlock = {
-          x: ix - 25,
-          y: iy - 25,
-          w: 50,
-          h: 50
-        };
-        blocks.push(newBlock);
-        blockCooldown = 30;
+    if (currentGame === "quiz") {
+      for (let i = bubbles.length - 1; i >= 0; i--) {
+        let b = bubbles[i];
+        if (dist(width - indexTip[0], indexTip[1], b.x, b.y) < b.r) {
+          if (thumbTip[1] < wrist[1] - 30) {
+            if (b.correct) score++;
+            else score--;
+            bubbles.splice(i, 1);
+          } else if (dist(indexTip[0], indexTip[1], middleTip[0], middleTip[1]) > 40) {
+            if (!b.correct) score++;
+            else score--;
+            bubbles.splice(i, 1);
+          }
+        }
+      }
+    } else if (currentGame === "blocks") {
+      if (!holdingBlock) {
+        holdingBlock = new Block(handX, handY);
+      } else {
+        holdingBlock.x = handX;
+        holdingBlock.y = handY;
+        let distance = dist(indexTip[0], indexTip[1], thumbTip[0], thumbTip[1]);
+        if (distance < 40 && blockCooldown <= 0) {
+          holdingBlock.snapToStack();
+          blocks.push(holdingBlock);
+          holdingBlock = null;
+          blockCooldown = 20;
+        }
       }
     } else if (currentGame === "fruit") {
       for (let i = fruits.length - 1; i >= 0; i--) {
-        let f = fruits[i];
-        if (!f.sliced && dist(ix, iy, f.x, f.y) < 30) {
-          f.sliced = true;
+        if (fruits[i].isTouched(handX, handY)) {
           score++;
+          slicedFruits.push(new SlicedFruit(fruits[i].x, fruits[i].y));
+          fruits.splice(i, 1);
         }
       }
-
-      for (let b of bombs) {
-        if (dist(ix, iy, b.x, b.y) < 30) {
-          score = 0;
+      for (let i = bombs.length - 1; i >= 0; i--) {
+        if (bombs[i].isTouched(handX, handY)) {
+          score = max(0, score - 5);
+          bombs.splice(i, 1);
         }
       }
     }
-
-    if (blockCooldown > 0) blockCooldown--;
   }
 }
 
-function drawBlocks() {
-  for (let b of blocks) {
-    fill(150, 200, 255);
-    rect(b.x, b.y, b.w, b.h);
+class Bubble {
+  constructor(txt, correct) {
+    this.text = txt;
+    this.correct = correct;
+    this.x = random(100, width - 100);
+    this.y = -50;
+    this.r = 60;
+    this.speed = 2;
   }
 
-  fill(0);
-  textSize(16);
-  text("食指與拇指靠近放置積木", width / 2, height - 20);
-}
-
-function drawFruit() {
-  for (let i = fruits.length - 1; i >= 0; i--) {
-    let f = fruits[i];
-    f.y -= f.vy;
-    f.vy -= 0.5;
-
-    if (f.sliced) {
-      fill(255, 0, 0);
-      arc(f.x, f.y, 60, 60, PI + QUARTER_PI, TWO_PI + QUARTER_PI);
-      arc(f.x + 10, f.y, 60, 60, PI + QUARTER_PI, TWO_PI + QUARTER_PI);
-    } else {
-      fill(0, 255, 0);
-      ellipse(f.x, f.y, 60);
-    }
-
-    if (f.y < -60) fruits.splice(i, 1);
+  update() {
+    this.y += this.speed;
   }
 
-  for (let b of bombs) {
-    b.y -= b.vy;
-    b.vy -= 0.5;
-    fill(0);
-    ellipse(b.x, b.y, 60);
+  offScreen() {
+    return this.y > height + this.r;
   }
 
-  if (frameCount % 90 === 0) {
-    let isBomb = random() < 0.2;
-    if (isBomb) {
-      bombs.push({ x: random(60, width - 60), y: height, vy: random(8, 12) });
-    } else {
-      fruits.push({ x: random(60, width - 60), y: height, vy: random(14, 18), sliced: false });
-    }
-  }
-
-  fill(0);
-  textSize(20);
-  text("得分: " + score, width / 2, 30);
-}
-
-function drawQuiz() {
-  if (!gameStarted) return;
-  if (bubbles.length < 1 && millis() - lastBubbleTime > 1000) {
-    let q = random(questionSet);
-    let isCorrect = q.correct;
-    let x = random(50, width - 50);
-    bubbles.push({ text: q.text, x, y: height, correct: isCorrect });
-    lastBubbleTime = millis();
-  }
-
-  for (let i = bubbles.length - 1; i >= 0; i--) {
-    let b = bubbles[i];
-    b.y -= 2;
-    fill(255);
+  display() {
+    fill(this.correct ? 'lightblue' : 'lightpink');
     stroke(0);
-    ellipse(b.x, b.y, 200, 80);
+    ellipse(this.x, this.y, this.r * 2);
     fill(0);
-    noStroke();
     textSize(14);
-    text(b.text, b.x, b.y);
+    stroke(255);
+    strokeWeight(4);
+    text(this.text, this.x, this.y, this.r * 1.8);
+    noStroke();
+  }
+}
 
-    if (
-      predictions.length > 0 &&
-      predictions[0].annotations &&
-      predictions[0].annotations.indexFinger
-    ) {
-      let finger = predictions[0].annotations.indexFinger[3];
-      let fx = width - finger[0];
-      let fy = finger[1];
-      fill(0, 255, 0);
-      ellipse(fx, fy, 15);
-
-      if (dist(fx, fy, b.x, b.y) < 40) {
-        if (b.correct) score++;
-        else score--;
-        bubbles.splice(i, 1);
-      }
-    }
+class Block {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.w = 50;
+    this.h = 30;
   }
 
-  fill(0);
-  textSize(18);
-  text("時間: " + timer + " | 分數: " + score, width / 2, 30);
+  snapToStack() {
+    this.y = height - 30 - blocks.length * 30;
+    this.x = constrain(this.x, this.w / 2, width - this.w / 2);
+  }
 
-  if (timer <= 0) {
-    gameStarted = false;
-    textSize(24);
-    text("時間到！最終得分: " + score, width / 2, height / 2);
-    noLoop();
+  display() {
+    fill("gold");
+    stroke(0);
+    rectMode(CENTER);
+    rect(this.x, this.y, this.w, this.h);
+  }
+}
+
+class Fruit {
+  constructor() {
+    this.x = random(100, width - 100);
+    this.y = height;
+    this.vx = random(-2, 2);
+    this.vy = -random(10, 18);
+    this.gravity = 0.4;
+  }
+
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.vy += this.gravity;
+  }
+
+  offScreen() {
+    return this.y > height + 50;
+  }
+
+  display() {
+    image(fruitImages['watermelon'], this.x - 30, this.y - 30, 60, 60);
+  }
+
+  isTouched(x, y) {
+    return dist(x, y, this.x, this.y) < 40;
+  }
+}
+
+class SlicedFruit {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.vx1 = -2;
+    this.vx2 = 2;
+    this.vy = -2;
+    this.gravity = 0.2;
+  }
+
+  update() {
+    this.x1 = this.x + this.vx1;
+    this.x2 = this.x + this.vx2;
+    this.y += this.vy;
+    this.vy += this.gravity;
+  }
+
+  offScreen() {
+    return this.y > height + 50;
+  }
+
+  display() {
+    image(fruitImages['watermelon_half'], this.x1 - 30, this.y - 30, 30, 60);
+    image(fruitImages['watermelon_half'], this.x2, this.y - 30, 30, 60);
+  }
+}
+
+class Bomb {
+  constructor() {
+    this.x = random(100, width - 100);
+    this.y = height;
+    this.vx = random(-2, 2);
+    this.vy = -random(10, 18);
+    this.gravity = 0.4;
+  }
+
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.vy += this.gravity;
+  }
+
+  offScreen() {
+    return this.y > height + 50;
+  }
+
+  display() {
+    image(bombImg, this.x - 20, this.y - 20, 40, 40);
+  }
+
+  isTouched(x, y) {
+    return dist(x, y, this.x, this.y) < 40;
   }
 }
