@@ -12,10 +12,8 @@ let blocks = [];
 let holdingBlock = null;
 let blockCooldown = 0;
 let fruits = [];
-let fruitImages = {};
 let slicedFruits = [];
 let bombs = [];
-let bombImg;
 
 let questionSet = [
   { text: "教育科技強調科技與學習的整合", correct: true },
@@ -26,12 +24,6 @@ let questionSet = [
   { text: "教學設計不需要考慮學生學習歷程", correct: false },
   { text: "教育科技與課程設計可結合進行教學創新", correct: true }
 ];
-
-function preload() {
-  fruitImages['watermelon'] = loadImage('https://i.imgur.com/fO2fZ5W.png');
-  fruitImages['watermelon_half'] = loadImage('https://i.imgur.com/ovztbmz.png');
-  bombImg = loadImage('https://i.imgur.com/nUXK1sO.png');
-}
 
 function setup() {
   createCanvas(640, 480);
@@ -100,7 +92,12 @@ function draw() {
 }
 
 function drawHandLandmarks() {
-  if (predictions.length > 0) {
+  if (
+    predictions.length > 0 &&
+    predictions[0].annotations &&
+    predictions[0].annotations.indexFinger &&
+    predictions[0].annotations.thumb
+  ) {
     let hand = predictions[0];
     let index = hand.annotations.indexFinger[3];
     let thumb = hand.annotations.thumb[3];
@@ -112,7 +109,7 @@ function drawHandLandmarks() {
 
     fill(0, 255, 0);
     noStroke();
-    ellipse(ix, iy, 10, 10);
+    ellipse(ix, iy, 15);
 
     let distance = dist(ix, iy, tx, ty);
 
@@ -126,6 +123,20 @@ function drawHandLandmarks() {
         };
         blocks.push(newBlock);
         blockCooldown = 30;
+      }
+    } else if (currentGame === "fruit") {
+      for (let i = fruits.length - 1; i >= 0; i--) {
+        let f = fruits[i];
+        if (!f.sliced && dist(ix, iy, f.x, f.y) < 30) {
+          f.sliced = true;
+          score++;
+        }
+      }
+
+      for (let b of bombs) {
+        if (dist(ix, iy, b.x, b.y) < 30) {
+          score = 0;
+        }
       }
     }
 
@@ -150,7 +161,14 @@ function drawFruit() {
     f.y -= f.vy;
     f.vy -= 0.5;
 
-    image(fruitImages[f.sliced ? 'watermelon_half' : 'watermelon'], f.x, f.y, 60, 60);
+    if (f.sliced) {
+      fill(255, 0, 0);
+      arc(f.x, f.y, 60, 60, PI + QUARTER_PI, TWO_PI + QUARTER_PI);
+      arc(f.x + 10, f.y, 60, 60, PI + QUARTER_PI, TWO_PI + QUARTER_PI);
+    } else {
+      fill(0, 255, 0);
+      ellipse(f.x, f.y, 60);
+    }
 
     if (f.y < -60) fruits.splice(i, 1);
   }
@@ -158,39 +176,16 @@ function drawFruit() {
   for (let b of bombs) {
     b.y -= b.vy;
     b.vy -= 0.5;
-    image(bombImg, b.x, b.y, 60, 60);
+    fill(0);
+    ellipse(b.x, b.y, 60);
   }
 
   if (frameCount % 90 === 0) {
     let isBomb = random() < 0.2;
     if (isBomb) {
-      bombs.push({ x: random(width), y: height, vy: random(8, 12) });
+      bombs.push({ x: random(60, width - 60), y: height, vy: random(8, 12) });
     } else {
-      fruits.push({ x: random(width), y: height, vy: random(14, 18), sliced: false });
-    }
-  }
-
-  if (predictions.length > 0) {
-    let pts = predictions[0].annotations.indexFinger;
-    let x = width - pts[3][0];
-    let y = pts[3][1];
-
-    fill(0, 255, 0);
-    noStroke();
-    ellipse(x, y, 10, 10);
-
-    for (let i = fruits.length - 1; i >= 0; i--) {
-      let f = fruits[i];
-      if (!f.sliced && dist(x, y, f.x + 30, f.y + 30) < 30) {
-        f.sliced = true;
-        score++;
-      }
-    }
-
-    for (let b of bombs) {
-      if (dist(x, y, b.x + 30, b.y + 30) < 30) {
-        score = 0;
-      }
+      fruits.push({ x: random(60, width - 60), y: height, vy: random(14, 18), sliced: false });
     }
   }
 
@@ -220,14 +215,16 @@ function drawQuiz() {
     textSize(14);
     text(b.text, b.x, b.y);
 
-    if (predictions.length > 0) {
+    if (
+      predictions.length > 0 &&
+      predictions[0].annotations &&
+      predictions[0].annotations.indexFinger
+    ) {
       let finger = predictions[0].annotations.indexFinger[3];
       let fx = width - finger[0];
       let fy = finger[1];
-
       fill(0, 255, 0);
-      noStroke();
-      ellipse(fx, fy, 10, 10);
+      ellipse(fx, fy, 15);
 
       if (dist(fx, fy, b.x, b.y) < 40) {
         if (b.correct) score++;
