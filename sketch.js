@@ -110,6 +110,10 @@ function drawHandLandmarks() {
     let tx = width - thumb[0];
     let ty = thumb[1];
 
+    fill(0, 255, 0);
+    noStroke();
+    ellipse(ix, iy, 10, 10);
+
     let distance = dist(ix, iy, tx, ty);
 
     if (currentGame === "blocks") {
@@ -171,6 +175,10 @@ function drawFruit() {
     let x = width - pts[3][0];
     let y = pts[3][1];
 
+    fill(0, 255, 0);
+    noStroke();
+    ellipse(x, y, 10, 10);
+
     for (let i = fruits.length - 1; i >= 0; i--) {
       let f = fruits[i];
       if (!f.sliced && dist(x, y, f.x + 30, f.y + 30) < 30) {
@@ -216,6 +224,11 @@ function drawQuiz() {
       let finger = predictions[0].annotations.indexFinger[3];
       let fx = width - finger[0];
       let fy = finger[1];
+
+      fill(0, 255, 0);
+      noStroke();
+      ellipse(fx, fy, 10, 10);
+
       if (dist(fx, fy, b.x, b.y) < 40) {
         if (b.correct) score++;
         else score--;
